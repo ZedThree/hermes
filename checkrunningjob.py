@@ -1,5 +1,6 @@
 import paramiko
 import matplotlib.pyplot as plt
+import numpy as np
 import re
 
 def ssh_setup():
@@ -11,7 +12,7 @@ def ssh_setup():
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
     ssh.connect('hpcff.fz-juelich.de',username='fsggst01')
-    
+
     return ssh
 
 def get_running_jobs(ssh):
@@ -22,9 +23,9 @@ def get_running_jobs(ssh):
     stdin, stdout, stderr = ssh.exec_command("showq | grep fsggst01 | grep Run")
     # Parses the output of the previous command into a list of running jobs
     jobs = stdout.read().splitlines()
-    
+
     return jobs
-   
+
 def get_jobfile(ssh, jobid):
     """
     From the connection SSH, find the directory of running job JOBID.
@@ -40,7 +41,7 @@ def get_jobfile(ssh, jobid):
     stdin, stdout, stderr = ssh.exec_command("ls " + jobdir[0] + "/*.o")
     # need someway to catch the inevitable errors
     filename = stdout.read().splitlines()
-    
+
     return filename
 
 def get_energy(ssh, filename):
@@ -51,7 +52,7 @@ def get_energy(ssh, filename):
     stdin, stdout, stderr = ssh.exec_command("grep field\(1 " + filename[0] + " | awk '{print $7}'")
     # Parse it nicely
     energy = stdout.read().splitlines()
-    
+
     return energy
 
 def get_time(ssh, filename):
@@ -69,15 +70,18 @@ def get_time(ssh, filename):
 
     return time
 
-# def get_dict_jobs(ssh, jobs):
-#     """
-#     From the connection SSH, return the full details from qstat -f of each of the running JOBS
-#     in a dictionary.
-#     """
-#     for job in jobs:
-        
+def fit_energy(time, energy):
+    """
+    Fit an exponential to the energy
+    """
 
-if __name__ == "__main__": 
+    energylog = np.log(np.array(energy, 'float'))
+    fit = np.polyfit(np.array(time,'float'),energylog,1)
+    energy_fit = np.exp(np.array(time,'float')*fit[0] + fit[1])
+
+    return energy_fit
+
+if __name__ == "__main__":
     # Connect to a computer
     ssh = ssh_setup()
     # Find out the running jobs
@@ -94,8 +98,10 @@ if __name__ == "__main__":
         # Get the field energy and time of each running job
         energy = get_energy(ssh, filename)
         time = get_time(ssh, filename)
+        # Get a fit
+        energy_fit = fit_energy(time, energy)
         # Plot it nicely
-        plt.semilogy(time,energy)
+        plt.semilogy(time,energy,time,energy_fit,'--r')
         plt.ylabel('Energy [$m_i c_s^2$]')
         plt.xlabel('Time [$\Omega_{ci}^{-1}$]')
         plt.show()
